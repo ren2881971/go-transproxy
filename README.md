@@ -129,6 +129,26 @@ If you want to use an application which access to internet using port 5000, run 
 sudo -E transproxy -private-dns 192.168.0.100 -public-dns 8.8.8.8 -tcp-proxy-dports 22,5000
 ```
 
+## Testing
+
+### Quick verification
+
+The project uses Go modules, so you can run all unit tests (including the GMSSL proxy coverage) with:
+
+```
+go test -vet=off ./...
+```
+
+To ensure the binary builds correctly with the GMSSL integration, run:
+
+```
+go build ./...
+```
+
+### End-to-end GMSSL validation
+
+For a full handshake test using real SM2/SM3/SM4 certificates, follow the step-by-step guide in [docs/gmssl-testing.md](docs/gmssl-testing.md). The document walks through generating test certificates with GmSSL, starting the proxy with mutual-authentication enabled, and exercising both the inbound and outbound paths.
+
 ## Current Limitation
 
 * HTTP proxy: Only works with HTTP host header.
