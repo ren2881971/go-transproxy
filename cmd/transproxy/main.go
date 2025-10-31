@@ -82,9 +82,57 @@ var (
 		"DNS-over-HTTPS endpoint URL",
 	)
 
-	dnsEnableTCP = fs.Bool("dns-tcp", true, "DNS Listen on TCP")
-	dnsEnableUDP = fs.Bool("dns-udp", true, "DNS Listen on UDP")
+	dnsEnableTCP    = fs.Bool("dns-tcp", true, "DNS Listen on TCP")
+	dnsEnableUDP    = fs.Bool("dns-udp", true, "DNS Listen on UDP")
 	disableIPTables = fs.Bool("disable-iptables", false, "Disable automatic iptables configuration")
+
+	gmsslEnabled = fs.Bool(
+		"gmssl-enable",
+		false,
+		"Enable the GMSSL transparent proxy for mutual authentication",
+	)
+
+	gmsslListenAddress = fs.String(
+		"gmssl-listen",
+		":3134",
+		"GMSSL proxy listen address, as `[host]:port`",
+	)
+
+	gmsslPorts = fs.String(
+		"gmssl-ports",
+		"443,8443",
+		"Comma separated list of destination ports that require GMSSL encryption",
+	)
+
+	gmsslCertificateFile = fs.String(
+		"gmssl-cert",
+		"",
+		"Path to the GMSSL certificate (SM2) in PEM format",
+	)
+
+	gmsslKeyFile = fs.String(
+		"gmssl-key",
+		"",
+		"Path to the GMSSL private key (SM2) in PEM format",
+	)
+
+	gmsslCAFile = fs.String(
+		"gmssl-ca",
+		"",
+		"Path to the GMSSL CA certificate bundle in PEM format",
+	)
+
+	gmsslDialTimeout = fs.Duration(
+		"gmssl-dial-timeout",
+		10*time.Second,
+		"Dial timeout for outbound GMSSL connections",
+	)
+
+	gmsslHandshakeTimeout = fs.Duration(
+		"gmssl-handshake-timeout",
+		10*time.Second,
+		"Handshake timeout for inbound GMSSL sessions",
+	)
 )
 
 func main() {
@@ -141,6 +189,28 @@ func startAllProxy(level colog.Level) {
 	}
 
 	np := parseNoProxy(noProxy)
+	gmPorts, err := transproxy.ParsePortList(*gmsslPorts)
+	if err != nil {
+		log.Fatalf("alert: invalid gmssl port list: %s", err)
+	}
+
+	gmProxy, err := transproxy.NewGMSSLProxy(transproxy.GMSSLProxyConfig{
+		Enabled:          *gmsslEnabled,
+		ListenAddress:    *gmsslListenAddress,
+		Ports:            gmPorts,
+		CertificateFile:  *gmsslCertificateFile,
+		KeyFile:          *gmsslKeyFile,
+		CACertFile:       *gmsslCAFile,
+		DialTimeout:      *gmsslDialTimeout,
+		HandshakeTimeout: *gmsslHandshakeTimeout,
+	})
+	if err != nil {
+		log.Fatalf("alert: %s", err.Error())
+	}
+	if err := gmProxy.Start(); err != nil {
+		log.Fatalf("alert: %s", err.Error())
+	}
+
 	// start servers
 	tcpProxy := transproxy.NewTCPProxy(
 		transproxy.TCPProxyConfig{
@@ -203,11 +273,13 @@ func startAllProxy(level colog.Level) {
 		outgoingPublicDNS = ""
 	}
 
-	var t *transproxy.IPTables
-	var err error
+	var (
+		t           *transproxy.IPTables
+		iptablesErr error
+	)
 
 	if !*disableIPTables {
-		t, err = transproxy.NewIPTables(&transproxy.IPTablesConfig{
+		t, iptablesErr = transproxy.NewIPTables(&transproxy.IPTablesConfig{
 			DNSToPort:   dnsToPort,
 			HTTPToPort:  httpToPort,
 			HTTPSToPort: httpsToPort,
@@ -215,8 +287,8 @@ func startAllProxy(level colog.Level) {
 			TCPDPorts:   tcpDPorts,
 			PublicDNS:   outgoingPublicDNS,
 		})
-		if err != nil {
-			log.Printf("alert: %s", err.Error())
+		if iptablesErr != nil {
+			log.Printf("alert: %s", iptablesErr.Error())
 		}
 
 		t.Start()
