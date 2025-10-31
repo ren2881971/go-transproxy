@@ -15,6 +15,9 @@ require (
 	github.com/inconshreveable/go-vhost v0.0.0-20160627193104-06d84117953b
 	github.com/miekg/dns v0.0.0-20170812192144-0598bd43cf51
 	github.com/pkg/errors v0.8.0
+	github.com/tjfoc/gmsm v0.0.0
 	golang.org/x/net v0.0.0-20170809000501-1c05540f6879
 	golang.org/x/sys v0.0.0-20170814191752-2d3e384235de
 )
+
+replace github.com/tjfoc/gmsm => ./third_party/gmsm

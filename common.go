@@ -134,6 +134,73 @@ func Pipe(srcConn *TCPConn, destConn net.Conn) {
 	log.Printf("debug: End proxy")
 }
 
+type closeWriter interface {
+	CloseWrite() error
+}
+
+type closeReader interface {
+	CloseRead() error
+}
+
+func PipeBidirectional(left net.Conn, right net.Conn) {
+	log.Printf("debug: Start proxy (bidirectional)")
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		buf := pool.Get().([]byte)
+		_, err := io.CopyBuffer(right, left, buf)
+		pool.Put(buf)
+		if err != nil {
+			log.Printf("debug: PipeBidirectional left->right finished: %v", err)
+		}
+
+		switch c := right.(type) {
+		case netutil.HalfCloser:
+			c.CloseWrite()
+		case closeWriter:
+			c.CloseWrite()
+		}
+
+		if c, ok := left.(closeReader); ok {
+			c.CloseRead()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		buf := pool.Get().([]byte)
+		_, err := io.CopyBuffer(left, right, buf)
+		pool.Put(buf)
+		if err != nil {
+			log.Printf("debug: PipeBidirectional right->left finished: %v", err)
+		}
+
+		if c, ok := left.(closeWriter); ok {
+			c.CloseWrite()
+		}
+
+		switch c := right.(type) {
+		case netutil.HalfCloser:
+			c.CloseRead()
+		case closeReader:
+			c.CloseRead()
+		}
+	}()
+
+	wg.Wait()
+
+	left.Close()
+	right.Close()
+
+	log.Printf("debug: End proxy (bidirectional)")
+}
+
 type NoProxy struct {
 	IPs     []string
 	CIDRs   []*net.IPNet
